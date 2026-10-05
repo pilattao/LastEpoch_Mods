@@ -3,7 +3,7 @@ using Il2Cpp;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(LastEpoch.ModelSwapper.ModelSwapperMod), "Sentinel Model Swapper", "0.1.0", "pilattao (based on RCInet)")]
+[assembly: MelonInfo(typeof(LastEpoch.ModelSwapper.ModelSwapperMod), "Sentinel Model Swapper", "0.2.0", "pilattao (based on RCInet)")]
 [assembly: MelonGame("Eleventh Hour Games", "Last Epoch")]
 [assembly: HarmonyDontPatchAll]
 
@@ -16,24 +16,27 @@ public sealed class ModelSwapperMod : MelonMod
     internal static readonly Dictionary<IntPtr, ClientCharacterInfoProvider> Providers = new();
     private MelonPreferences_Category preferences = null!;
     private MelonPreferences_Entry<string> model = null!;
-    private bool showMenu;
+    private MelonPreferences_Entry<bool> hideHelmet = null!;
+    private readonly HelmetController helmet = new();
     private bool ready;
     private IntPtr reportedActor;
 
     internal VisualModel Selected => VisualSelection.Parse(model?.Value);
+    internal bool HideHelmet => hideHelmet?.Value ?? false;
 
     public override void OnInitializeMelon()
     {
         Instance = this;
         preferences = MelonPreferences.CreateCategory("SentinelModelSwapper");
         model = preferences.CreateEntry("Model", "Rogue", "Sentinel body", "Original, Rogue, or Acolyte. Applies on next area/character load.");
+        hideHelmet = preferences.CreateEntry("HideHelmet", true, "Hide helmet", "Only hides the visual; equipped item and stats are unchanged.");
         try
         {
             HarmonyInstance.PatchAll(typeof(ModelSwapperMod).Assembly);
             var count = HarmonyInstance.GetPatchedMethods().Count();
-            if (count != 5) throw new InvalidOperationException($"Expected 5 patched methods, found {count}.");
+            if (count != 7) throw new InvalidOperationException($"Expected 7 patched methods, found {count}.");
             ready = true;
-            LoggerInstance.Msg($"Ready; 5/5 patches; body={Selected}. F8 opens the menu. Changes apply on the next area/character load.");
+            LoggerInstance.Msg($"Ready; 7/7 patches; body={Selected}; hideHelmet={HideHelmet}. Settings > Gameplay > Sentinel Appearance. Body changes apply on the next area/character load.");
         }
         catch (Exception error)
         {
@@ -43,28 +46,26 @@ public sealed class ModelSwapperMod : MelonMod
         }
     }
 
-    public override void OnUpdate()
+    internal void SelectModel(VisualModel choice)
     {
-        if (ready && Input.GetKeyDown(KeyCode.F8)) showMenu = !showMenu;
-    }
-
-    public override void OnGUI()
-    {
-        if (!ready || !showMenu) return;
-        GUI.Box(new Rect(24, 100, 340, 205), "Sentinel Model Swapper / F8");
-        GUI.Label(new Rect(40, 130, 310, 25), $"Next load: {Selected}");
-        GUI.Label(new Rect(40, 155, 310, 25), "Choose a body, then enter another area.");
-        DrawChoice(VisualModel.Rogue, 190);
-        DrawChoice(VisualModel.Acolyte, 225);
-        DrawChoice(VisualModel.Original, 260);
-    }
-
-    private void DrawChoice(VisualModel choice, float y)
-    {
-        if (!GUI.Button(new Rect(40, y, 308, 28), choice.ToString())) return;
         model.Value = choice.ToString();
         preferences.SaveToFile();
         LoggerInstance.Msg($"Body={choice}; applies on next area/character load.");
+    }
+
+    internal void SelectHelmetVisibility(bool hide)
+    {
+        hideHelmet.Value = hide;
+        preferences.SaveToFile();
+        helmet.Update(PlayerFinder.playerActorVisuals, hide);
+    }
+
+    public override void OnDeinitializeMelon()
+    {
+        helmet.Restore();
+        Sessions.Clear();
+        Providers.Clear();
+        EvadeAnimationPatch.Clear();
     }
 
     public override void OnLateUpdate()
@@ -72,11 +73,13 @@ public sealed class ModelSwapperMod : MelonMod
         // One readiness record per local actor; no character names, account IDs, or saves are logged.
         if (!ready) return;
         var visuals = PlayerFinder.playerActorVisuals;
+        helmet.Update(visuals, HideHelmet);
         if (visuals == null || visuals.Pointer == reportedActor || !visuals.ClassVisualsCreated) return;
         reportedActor = visuals.Pointer;
         var target = Sessions.Get(visuals.Pointer);
         var data = PlayerFinder.getPlayerData();
-        LoggerInstance.Msg($"Visuals created; requestedBody={target?.ToString() ?? "original"}; realClass={data?.CharacterClass.ToString() ?? "unavailable"}; equipmentReady={visuals.equipmentVisualsManager?.Initialized}; modelObject={visuals._classVisualsGo?.name ?? visuals._classVisualsGO?.name ?? "unavailable"}.");
+        var realClass = visuals.clientCharacterInfoProvider?.classID ?? data?.CharacterClass;
+        LoggerInstance.Msg($"Visuals created; requestedBody={target?.ToString() ?? "original"}; realClass={realClass?.ToString() ?? "unavailable"}; equipmentReady={visuals.equipmentVisualsManager?.Initialized}; modelObject={visuals._classVisualsGo?.name ?? visuals._classVisualsGO?.name ?? "unavailable"}.");
     }
 
     internal static bool IsLocal(ActorVisuals visuals)
@@ -201,5 +204,6 @@ internal static class DestroyVisualsPatch
     {
         ModelSwapperMod.Sessions.Remove(__instance.Pointer);
         ModelSwapperMod.Providers.Remove(__instance.Pointer);
+        EvadeAnimationPatch.Remove(__instance.Pointer);
     }
 }

@@ -3,9 +3,9 @@
     <TargetFramework>net6.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>10</LangVersion>
+    <LangVersion>12</LangVersion>
     <AssemblyName>LastEpoch.ModelSwapper</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
   </PropertyGroup>
   <Target Name="CheckGamePath" BeforeTargets="ResolveAssemblyReferences">
     <Error Condition="!Exists('$(LastEpochPath)/MelonLoader/Il2CppAssemblies/Il2CppLE.dll')"

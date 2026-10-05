@@ -9,10 +9,14 @@ This project compiles separately; it does not load the rest of LastEpoch_Hud.
 1. Install MelonLoader 0.7.3 and launch the game once to generate its IL2CPP assemblies.
 2. With the game closed, place **only** `LastEpoch.ModelSwapper.dll` in the game's `Mods` folder.
 3. Enter the game with a Sentinel (any mastery). The initial selection is **Rogue**.
-4. Press **F8** to open the menu and select **Rogue**, **Acolyte**, or **Original**.
+4. Open **Settings → Gameplay → Sentinel Appearance** and select **Rogue**, **Acolyte**, or **Original**.
 5. Enter another area or return to character selection and reload the character to apply it.
 
-The menu saves `[SentinelModelSwapper] Model` in `UserData/MelonPreferences.cfg`.
+**Hide helmet** is enabled by default. Toggle it in the same settings section; it
+applies immediately and leaves your helmet equipped with all of its stats. F8 is
+no longer used in version 0.2.0.
+
+The menu saves `[SentinelModelSwapper] Model` and `HideHelmet` in `UserData/MelonPreferences.cfg`.
 Invalid settings use the original model. To uninstall, close the game and remove
 `Mods/LastEpoch.ModelSwapper.dll`; no save conversion is needed.
 
@@ -28,7 +32,19 @@ Invalid settings use the original model. To uninstall, close the game and remove
   an ordinary base appearance; its inventory item and stats are not changed.
 - Equipment has the same body choice throughout that actor's lifetime. Menu changes
   take effect at the next model creation, avoiding mixed rigs during asynchronous equipping.
-- Startup installs all five patches together; a patching failure removes them all.
+- Helmet hiding deactivates only the local Sentinel's helmet visual objects and uses
+  the native default-head and skin-mask routines. It preserves equipped visual data
+  and the head configuration; disabling it restores the current equipped appearance.
+  Async equipment loading finishes before the override is applied.
+- The native settings section uses the same Gameplay row/header templates as
+  Terrible fog_OF_war. Cloned checkbox events are replaced entirely so persistent
+  callbacks cannot change unrelated game settings.
+- For the local swapped Sentinel's Space/Evade, the client animation/VFX entry point
+  receives the selected body's native Evade animation. Selection uses the actual
+  `sentinelEvade` ability ID, so other skills sharing an animation are untouched.
+  The equipped ability, ability assets, movement, cooldown, and cast timing are unchanged.
+  An unavailable target asset leaves the original animation and is logged.
+- Startup installs all seven patches together; a patching failure removes them all.
 - The mod never assigns `CharacterData.CharacterClass`, writes saves, or changes skills.
 
 Cosmetic MTX and every Sentinel skill animation have not been exhaustively tested.
@@ -47,22 +63,36 @@ Output: `ModelSwapper/bin/Release/net6.0/LastEpoch.ModelSwapper.dll`.
 The game, Unity, Harmony, and MelonLoader DLLs are references only and are not distributed.
 
 The tests exercise selection, local-player isolation, invalid preferences, per-actor
-state, cleanup, and compatible armor selection. They cannot exercise Unity's native
+state, cleanup, compatible armor selection, reversible helmet-object visibility,
+and Evade animation isolation/fallback.
+They cannot exercise Unity's native
 asset loading or animations.
 
 ## Verification boundary
 
 Built against Steam build **25711439**, Unity **6000.4.8f1**, and generated assemblies
-from MelonLoader **0.7.3**. Compilation and the 26 policy/state tests pass.
-In-game startup loaded all five patches together with the three existing Terrible
+from MelonLoader **0.7.3**. Compilation and the 38 policy/state tests pass.
+Version 0.1.0 startup loaded all five patches together with the three existing Terrible
 mods. The local Sentinel requested class ID 4; Unity created
 `Rogue Visuals Prefab_V4 (Clone)` and its equipment manager reported initialized.
 Other player visual actors retained their original class IDs. These observations
 confirm native model creation, but do not establish correct armor or animations.
+Native loading of Acolyte was also observed across area transitions.
+Version 0.2.0 loaded all seven patches with the same three Terrible mods. Unity created
+`Acolyte Visuals Prefab V3 (Clone)` while the original provider still reported class ID 2.
+The native settings injection reported four controls; helmet hiding reported one visual
+object hidden. Pressing Space reached the scoped animation replacement and logged
+`sentinelEvade: Blitzing -> Pounding`, with the Acolyte target asset available.
+The installed build's native ability assets independently confirm Sentinel Evade
+animation 30 (Blitzing) and Acolyte/Rogue Evade animation 28 (Pounding).
+These records verify the runtime paths; visual acceptance of settings, helmet restoration,
+and Evade remains pending. Rogue Evade has not been runtime tested.
 
 Human gameplay verification is pending: enter a Sentinel, confirm the body and armor, cast
 Smite, move, change equipment, transition between areas, and check that class/mastery
-and skills remain Sentinel/Paladin. Then test Acolyte and Original in the same way.
+and skills remain Sentinel/Paladin. Test Original and helmet on/off, including changing
+helmets while hidden and reopening the native settings. Check Space/Evade with
+both Rogue and Acolyte, including repeated use and changing areas.
 
 `MelonLoader/Latest.log` reports the patch count, requested class/body IDs, and visual
 readiness. A `CreateClassVisuals` message confirms a requested substitution; it does
